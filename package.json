@@ -1,0 +1,22 @@
+{
+  "name": "iot-controller-backend",
+  "version": "1.0.0",
+  "description": "IoT Controller Backend Server — Node.js + PostgreSQL",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "node --test tests/*.test.js",
+    "db:migrate": "node --env-file=.env src/db/migrate.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}

@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IoT Controller — Device & Modbus Configuration Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #0b0f19;
+      --bg-surface: #111827;
+      --bg-card: #182234;
+      --bg-card-hover: #1f2c42;
+      --border-color: #24324a;
+      --border-focus: #3b82f6;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --code-bg: #0d131f;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-base);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header */
+    header {
+      background: rgba(17, 24, 39, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-color);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #3b82f6, #06b6d4);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .brand-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .brand-subtitle {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.75rem;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      color: var(--success);
+      font-weight: 500;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--success);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    /* Navigation Tabs */
+    nav.tabs {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-color);
+      padding: 0 1.5rem;
+      display: flex;
+      gap: 0.5rem;
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.85rem 1.1rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-main);
+    }
+
+    .tab-btn.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      padding: 1.75rem 1.5rem;
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .card-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .card-desc {
+      font-size: 0.825rem;
+      color: var(--text-muted);
+      margin-top: 0.2rem;
+    }
+
+    /* Grids */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+
+    /* Form controls */
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    .form-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.825rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 0.35rem;
+    }
+
+    .form-label span.extra {
+      font-size: 0.75rem;
+      color: var(--primary);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    input[type="password"],
+    select {
+      width: 100%;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 0.6rem 0.85rem;
+      color: var(--text-main);
+      font-size: 0.9rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    }
+
+    .mono {
+      font-family: 'JetBrains Mono', monospace !important;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 1.1rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+      background: var(--bg-surface);
+      color: var(--text-main);
+    }
+
+    .btn:hover {
+      background: var(--bg-card-hover);
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--danger);
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+
+    .btn-danger:hover {
+      background: var(--danger);
+      color: #fff;
+    }
+
+    .btn-sm {
+      padding: 0.35rem 0.65rem;
+      font-size: 0.775rem;
+    }
+
+    /* Tables */
+    .table-container {
+      overflow-x: auto;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      background: var(--bg-surface);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.85rem;
+    }
+
+    th {
+      background: rgba(24, 34, 52, 0.8);
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid rgba(36, 50, 74, 0.5);
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(31, 44, 66, 0.5); }
+
+    /* Badges & Tags */
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .badge-success { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+    .badge-warning { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+    .badge-danger  { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+    .badge-info    { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+
+    /* Live Preview Banner */
+    .preview-box {
+      background: var(--code-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-top: 1rem;
+    }
+
+    .preview-header {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.5rem;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .preview-content {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      color: #38bdf8;
+      word-break: break-all;
+    }
+
+    .crc-highlight {
+      color: #34d399;
+      font-weight: 600;
+      background: rgba(16, 185, 129, 0.1);
+      padding: 0 4px;
+      border-radius: 4px;
+    }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 1rem;
+    }
+
+    .modal-backdrop.show { display: flex; }
+
+    .modal {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 600px;
+      max-height: 90vh;
+      overflow-y: auto;
+      padding: 1.5rem;
+    }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      padding: 0.85rem 1.25rem;
+      border-radius: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: #fff;
+      font-size: 0.9rem;
+      font-weight: 500;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.25s ease;
+      z-index: 200;
+    }
+
+    #toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    #toast.toast-success { border-color: var(--success); }
+    #toast.toast-error { border-color: var(--danger); }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header -->
+  <header>
+    <div class="brand">
+      <div class="brand-icon">IoT</div>
+      <div>
+        <div class="brand-title">IoT Controller Studio</div>
+        <div class="brand-subtitle">Renesas RL78/G13 Telemetry & Modbus Configuration Hub</div>
+      </div>
+    </div>
+    <div class="status-badge" id="backendStatus">
+      <span class="status-dot"></span>
+      <span>Backend Online</span>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="tabs">
+    <button class="tab-btn active" onclick="switchTab('devicesTab')">📱 Devices</button>
+    <button class="tab-btn" onclick="switchTab('modbusTab')">⚙️ DAQ & Modbus Config</button>
+    <button class="tab-btn" onclick="switchTab('relaysTab')">🔌 Relay Modules</button>
+    <button class="tab-btn" onclick="switchTab('telemetryTab')">📊 Live Telemetry</button>
+  </nav>
+
+  <!-- Main Content -->
+  <main>
+
+    <!-- 1. DEVICES TAB -->
+    <section id="devicesTab" class="tab-content active">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Registered IoT Devices</div>
+            <div class="card-desc">Hardware controllers connected via cellular 4G/2G or pre-configured in the database</div>
+          </div>
+          <button class="btn btn-primary" onclick="openDeviceModal()">+ Register New Device</button>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>System ID (Wire / Config)</th>
+                <th>Device Name</th>
+                <th>IMEI Number</th>
+                <th>Acq / Trans Intervals</th>
+                <th>Parameters</th>
+                <th>Relay Modules</th>
+                <th>Last Seen</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="devicesTableBody">
+              <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 2rem;">Loading devices...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. DAQ & MODBUS CONFIG TAB -->
+    <section id="modbusTab" class="tab-content">
+      <div class="grid-2">
+
+        <!-- Modbus RTU Interactive Builder -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">⚡ Modbus RTU & DAQ Parameter Builder</div>
+              <div class="card-desc">Interactive Modbus query frame generator with automatic CRC-16 (0xA001)</div>
+            </div>
+          </div>
+
+          <form id="paramForm" onsubmit="saveParameter(event)">
+            <!-- Target Device & Index -->
+            <div class="grid-2">
+              <div class="form-group">
+                <label class="form-label">Target Device</label>
+                <select id="paramDeviceSelect" onchange="loadDeviceParameters()" required>
+                  <option value="">-- Select a device --</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Parameter Index <span>(0 to 199)</span></label>
+                <input type="number" id="paramIndex" min="0" max="199" value="0" required>
+              </div>
+            </div>
+
+            <!-- Parameter Name & Source -->
+            <div class="grid-2">
+              <div class="form-group">
+                <label class="form-label">Display Name <span class="extra" id="nameCount">9 chars left</span></label>
+                <input type="text" id="paramName" maxlength="9" placeholder="e.g. Active P" oninput="updateParamPreview()" required>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Source Type</label>
+                <select id="paramSource" onchange="updateParamPreview()">
+                  <option value="12" selected>12: RS485 (Modbus RTU)</option>
+                  <option value="1">01: Supply Voltage</option>
+                  <option value="2">02: Temperature (Thermistor)</option>
+                  <option value="3">03: V1 Input</option>
+                  <option value="4">04: V2 Input</option>
+                  <option value="5">05: V3 Input</option>
+                  <option value="6">06: V4 Input</option>
+                  <option value="7">07: I1 Current</option>
+                  <option value="8">08: I2 Current</option>
+                  <option value="9">09: Digital Input</option>
+                  <option value="10">10: Frequency</option>
+                  <option value="11">11: Pulse Count</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Modbus RTU Query Config -->
+            <div style="background: rgba(0,0,0,0.25); border: 1px dashed var(--border-color); border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+              <div style="font-size: 0.825rem; font-weight: 700; color: #60a5fa; margin-bottom: 0.75rem;">
+                Modbus RTU Query Frame Generator
+              </div>
+
+              <div class="grid-2">
+                <div class="form-group">
+                  <label class="form-label">Slave Address (1-247)</label>
+                  <input type="number" id="mbSlave" min="1" max="247" value="1" oninput="generateModbusPacket()">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Function Code</label>
+                  <select id="mbFunction" onchange="generateModbusPacket()">
+                    <option value="3" selected>03: Read Holding Registers</option>
+                    <option value="4">04: Read Input Registers</option>
+                    <option value="1">01: Read Coils</option>
+                    <option value="2">02: Read Discrete Inputs</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="grid-2">
+                <div class="form-group">
+                  <label class="form-label">Start Register Address (0-65535)</label>
+                  <input type="number" id="mbRegister" min="0" max="65535" value="0" oninput="generateModbusPacket()">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Quantity / Points to Read</label>
+                  <input type="number" id="mbCount" min="1" max="125" value="2" oninput="generateModbusPacket()">
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label">Generated Modbus Request Hex <span class="extra" id="modbusHexLength">0/29 chars</span></label>
+                <input type="text" id="mbHex" class="mono" readonly style="color: #38bdf8; font-weight: 600;">
+              </div>
+            </div>
+
+            <!-- Communication Settings -->
+            <div class="grid-4">
+              <div class="form-group">
+                <label class="form-label">Baud Rate</label>
+                <select id="paramBaud" onchange="updateParamPreview()">
+                  <option value="0">9600</option>
+                  <option value="1">19200</option>
+                  <option value="2">38400</option>
+                  <option value="3" selected>115200</option>
+                  <option value="4">4800</option>
+                  <option value="5">2400</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Parity</label>
+                <select id="paramParity" onchange="updateParamPreview()">
+                  <option value="0" selected>None</option>
+                  <option value="1">Odd</option>
+                  <option value="2">Even</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Data Bits</label>
+                <select id="paramDataBits" onchange="updateParamPreview()">
+                  <option value="0" selected>8 bits</option>
+                  <option value="1">7 bits</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Stop Bits</label>
+                <select id="paramStopBits" onchange="updateParamPreview()">
+                  <option value="0" selected>1 stop bit</option>
+                  <option value="1">2 stop bits</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Factors & Timeout -->
+            <div class="grid-3">
+              <div class="form-group">
+                <label class="form-label">Timeout (ms)</label>
+                <input type="number" id="paramTimeout" value="3000" min="100" max="9999" oninput="updateParamPreview()">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Multiplier Factor</label>
+                <input type="number" id="paramMul" step="any" value="1.0" oninput="updateParamPreview()">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Addition Offset</label>
+                <input type="number" id="paramAdd" step="any" value="0.0" oninput="updateParamPreview()">
+              </div>
+            </div>
+
+            <!-- Live Compact String Preview -->
+            <div class="preview-box">
+              <div class="preview-header">
+                <span>Renesas RL78 Wire Compact Parameter String Preview</span>
+                <span id="wireStringLen">0 chars</span>
+              </div>
+              <div class="preview-content" id="wireStringPreview">--</div>
+            </div>
+
+            <div style="margin-top: 1.25rem; display: flex; gap: 0.75rem;">
+              <button type="submit" class="btn btn-primary" style="flex: 1;">💾 Save Parameter to Controller</button>
+              <button type="button" class="btn" onclick="resetParamForm()">Reset</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Parameters List for Selected Device -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Configured Parameters</div>
+              <div class="card-desc" id="paramListDesc">Select a device to view parameters</div>
+            </div>
+          </div>
+
+          <div class="table-container" style="max-height: 700px; overflow-y: auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Idx</th>
+                  <th>Name</th>
+                  <th>Source</th>
+                  <th>Modbus Request</th>
+                  <th>Factors</th>
+                  <th>Timeout</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="paramsTableBody">
+                <tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">No device selected</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 3. RELAY MODULES TAB -->
+    <section id="relaysTab" class="tab-content">
+      <div class="grid-2">
+
+        <!-- MQTT Settings -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📡 MQTT Broker & Topics</div>
+              <div class="card-desc">Quectel cellular modem MQTT 3.1.1 credentials & relay topics</div>
+            </div>
+          </div>
+
+          <form id="mqttForm" onsubmit="saveDeviceMqtt(event)">
+            <div class="form-group">
+              <label class="form-label">Select Device</label>
+              <select id="relayDeviceSelect" onchange="loadRelaySettings()" required>
+                <option value="">-- Select a device --</option>
+              </select>
+            </div>
+
+            <div class="grid-2">
+              <div class="form-group">
+                <label class="form-label">MQTT Broker Host</label>
+                <input type="text" id="mqttBroker" placeholder="broker.example.net">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Port</label>
+                <input type="number" id="mqttPort" value="1883">
+              </div>
+            </div>
+
+            <div class="grid-2">
+              <div class="form-group">
+                <label class="form-label">Client ID</label>
+                <input type="text" id="mqttClientId">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Username</label>
+                <input type="text" id="mqttUsername">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Password</label>
+              <input type="password" id="mqttPassword" placeholder="••••••••">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Command Topic (QoS 1)</label>
+              <input type="text" id="mqttCommandTopic" class="mono">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Status / Echo Topic (QMTPUBEX)</label>
+              <input type="text" id="mqttStatusTopic" class="mono">
+            </div>
+
+            <button type="submit" class="btn btn-primary">Update MQTT Settings</button>
+          </form>
+        </div>
+
+        <!-- Modbus RTU Relay Modules List -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🔌 Modbus RTU Relay Modules</div>
+              <div class="card-desc">Up to 16 external 8-channel relay modules on the RS485 bus (9600 8N1)</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="addRelayModuleRow()">+ Add Module</button>
+          </div>
+
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Modbus Slave ID (1-247)</th>
+                  <th>Channels</th>
+                  <th>Coil Start Address</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="relayModulesTableBody">
+                <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">Select a device to load relay modules</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style="margin-top: 1.25rem;">
+            <button class="btn btn-primary" onclick="saveRelayModules()">💾 Save Relay Modules</button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- 4. LIVE TELEMETRY TAB -->
+    <section id="telemetryTab" class="tab-content">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">📊 Live Telemetry Stream</div>
+            <div class="card-desc">Uploaded packets received via POST /api/data with decoded IEEE-754 floats and sentinels</div>
+          </div>
+          <div style="display: flex; gap: 0.75rem; align-items: center;">
+            <select id="telemetryDeviceSelect" onchange="loadTelemetryStream()" style="width: auto;">
+              <option value="">-- All Devices --</option>
+            </select>
+            <button class="btn btn-sm" onclick="loadTelemetryStream()">🔄 Refresh</button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Device ID</th>
+                <th>Timestamp (IST)</th>
+                <th>Write Cnt</th>
+                <th>Acq Cnt</th>
+                <th>Signal (CSQ)</th>
+                <th>Relays (P10.2 / P0.4 / P13.0)</th>
+                <th>Sensor Readings</th>
+              </tr>
+            </thead>
+            <tbody id="telemetryTableBody">
+              <tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">No telemetry received yet</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Edit / Add Device Modal -->
+  <div class="modal-backdrop" id="deviceModal">
+    <div class="modal">
+      <div class="card-header">
+        <div class="card-title" id="deviceModalTitle">Register New Device</div>
+        <button class="btn btn-sm" onclick="closeDeviceModal()">✕</button>
+      </div>
+
+      <form id="deviceForm" onsubmit="saveDevice(event)">
+        <div class="form-group">
+          <label class="form-label">IMEI Number (15 digits) *</label>
+          <input type="text" id="devImei" required placeholder="865510081833552">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Device Name</label>
+          <input type="text" id="devName" placeholder="Substation Feeder 1">
+        </div>
+
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">System ID (Optional / Auto-Gen)</label>
+            <input type="text" id="devSystemId" placeholder="Auto-generated if empty" class="mono">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Server Port</label>
+            <input type="text" id="devPort" value="8080">
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">Acquisition Interval (mins)</label>
+            <input type="number" id="devAcqMin" value="1" min="1" max="1440">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Transmission Interval (mins)</label>
+            <input type="number" id="devTransMin" value="1" min="1" max="1440">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Server Host / Address</label>
+          <input type="text" id="devHost" value="localhost">
+        </div>
+
+        <div style="display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem;">
+          <button type="button" class="btn" onclick="closeDeviceModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Device</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast">Notification message</div>
+
+  <!-- Client-side Logic -->
+  <script>
+    let devicesCache = [];
+    let currentRelayModules = [];
+
+    // --- Tab Switching ---
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+      event.currentTarget.classList.add('active');
+      document.getElementById(tabId).classList.add('active');
+
+      if (tabId === 'devicesTab') loadDevices();
+      if (tabId === 'modbusTab') loadDevicesDropdowns();
+      if (tabId === 'relaysTab') loadDevicesDropdowns();
+      if (tabId === 'telemetryTab') loadTelemetryStream();
+    }
+
+    // --- Toast Helper ---
+    function showToast(msg, type = 'success') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = `toast-${type} show`;
+      setTimeout(() => t.className = '', 3500);
+    }
+
+    // --- Modbus CRC-16 (Polynomial 0xA001) in JavaScript ---
+    function calculateModbusCRC(bytes) {
+      let crc = 0xFFFF;
+      for (let i = 0; i < bytes.length; i++) {
+        crc ^= bytes[i];
+        for (let j = 0; j < 8; j++) {
+          if ((crc & 0x0001) !== 0) {
+            crc = (crc >> 1) ^ 0xA001;
+          } else {
+            crc = crc >> 1;
+          }
+        }
+      }
+      const low = crc & 0xFF;
+      const high = (crc >> 8) & 0xFF;
+      return low.toString(16).padStart(2, '0').toUpperCase() +
+             high.toString(16).padStart(2, '0').toUpperCase();
+    }
+
+    // --- IEEE-754 Float to 8-char BE Hex in JavaScript ---
+    function floatToHex8BE(val) {
+      const buf = new ArrayBuffer(4);
+      const view = new DataView(buf);
+      view.setFloat32(0, parseFloat(val) || 0, false); // Big Endian
+      let hex = '';
+      for (let i = 0; i < 4; i++) {
+        hex += view.getUint8(i).toString(16).padStart(2, '0').toUpperCase();
+      }
+      return hex;
+    }
+
+    // --- Generate Modbus RTU Packet Live ---
+    function generateModbusPacket() {
+      const slave = parseInt(document.getElementById('mbSlave').value) || 1;
+      const fc = parseInt(document.getElementById('mbFunction').value) || 3;
+      const reg = parseInt(document.getElementById('mbRegister').value) || 0;
+      const cnt = parseInt(document.getElementById('mbCount').value) || 2;
+
+      const bytes = [
+        slave & 0xFF,
+        fc & 0xFF,
+        (reg >> 8) & 0xFF,
+        reg & 0xFF,
+        (cnt >> 8) & 0xFF,
+        cnt & 0xFF
+      ];
+
+      let rawHex = '';
+      bytes.forEach(b => rawHex += b.toString(16).padStart(2, '0').toUpperCase());
+
+      const crcLE = calculateModbusCRC(bytes);
+      const fullHex = rawHex + crcLE;
+
+      document.getElementById('mbHex').value = fullHex;
+      document.getElementById('modbusHexLength').textContent = `${fullHex.length}/29 chars`;
+
+      updateParamPreview();
+    }
+
+    // --- Update 30-Character Compact Wire String Preview ---
+    function updateParamPreview() {
+      const name = (document.getElementById('paramName').value || '').substring(0, 9);
+      document.getElementById('nameCount').textContent = `${9 - name.length} chars left`;
+
+      const source = String(document.getElementById('paramSource').value).padStart(2, '0');
+      const ptype = '00';
+      const rsMode = '0';
+      const rsDataType = '1';
+      const baud = document.getElementById('paramBaud').value;
+      const dataBits = document.getElementById('paramDataBits').value;
+      const parity = document.getElementById('paramParity').value;
+      const stopBits = document.getElementById('paramStopBits').value;
+      const timeout = String(parseInt(document.getElementById('paramTimeout').value) || 3000).padStart(4, '0');
+      const mulHex = floatToHex8BE(document.getElementById('paramMul').value);
+      const addHex = floatToHex8BE(document.getElementById('paramAdd').value);
+      const modbusHex = (document.getElementById('mbHex').value || '').trim();
+
+      // 30-char header:
+      // [00-01] source, [02-03] ptype, [04] mode, [05] type, [06] baud, [07] bits, [08] parity, [09] stop
+      // [10-13] timeout, [14-21] mul, [22-29] add
+      const header = `${source}${ptype}${rsMode}${rsDataType}${baud}${dataBits}${parity}${stopBits}${timeout}${mulHex}${addHex}`;
+      const fullWireStr = `${header}${modbusHex}#${name}`;
+
+      document.getElementById('wireStringPreview').innerHTML =
+        `<span style="color:#93c5fd;">${header}</span>` +
+        `<span style="color:#f59e0b;">${modbusHex}</span>` +
+        `<span style="color:#a855f7;">#</span>` +
+        `<span style="color:#34d399;">${name}</span>`;
+
+      document.getElementById('wireStringLen').textContent = `${fullWireStr.length} chars (Header: ${header.length} chars)`;
+    }
+
+    // --- API Calls: Devices ---
+    async function loadDevices() {
+      try {
+        const res = await fetch('/api/manage/devices');
+        const data = await res.json();
+        devicesCache = data.devices || [];
+
+        const tbody = document.getElementById('devicesTableBody');
+        if (devicesCache.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 2rem;">No devices registered yet. Click "+ Register New Device" to create one.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = devicesCache.map(d => {
+          const lastSeen = d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : 'Never';
+          return `
+            <tr>
+              <td>
+                <span class="badge badge-info mono">${d.system_id}</span>
+                <span style="color: var(--text-muted); font-size: 0.75rem;">/</span>
+                <span class="mono" style="color: var(--text-muted); font-size: 0.8rem;">${d.config_system_id}</span>
+              </td>
+              <td><strong>${escapeHtml(d.name || 'Unnamed')}</strong></td>
+              <td class="mono">${d.imei}</td>
+              <td>Acq: ${d.acq_interval_min}m / Trans: ${d.trans_interval_min}m</td>
+              <td><span class="badge badge-success">${d.param_count} params</span></td>
+              <td><span class="badge badge-warning">${d.relay_count} relays</span></td>
+              <td>${lastSeen}</td>
+              <td>
+                <button class="btn btn-sm" onclick="selectDeviceForConfig('${d.system_id}')">Configure</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      } catch (err) {
+        showToast('Failed to load devices: ' + err.message, 'error');
+      }
+    }
+
+    async function saveDevice(e) {
+      e.preventDefault();
+      const payload = {
+        imei: document.getElementById('devImei').value.trim(),
+        name: document.getElementById('devName').value.trim(),
+        system_id: document.getElementById('devSystemId').value.trim() || undefined,
+        server_port: document.getElementById('devPort').value.trim() || '8080',
+        server_add: document.getElementById('devHost').value.trim() || 'localhost',
+        acq_interval_min: parseInt(document.getElementById('devAcqMin').value) || 1,
+        trans_interval_min: parseInt(document.getElementById('devTransMin').value) || 1,
+      };
+
+      try {
+        const res = await fetch('/api/manage/devices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || 'Failed to save');
+
+        showToast(`Device ${result.device.name} saved! SystemID: ${result.device.system_id}`);
+        closeDeviceModal();
+        loadDevices();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    function selectDeviceForConfig(sysId) {
+      document.querySelectorAll('.tab-btn')[1].click(); // Switch to Modbus tab
+      setTimeout(() => {
+        document.getElementById('paramDeviceSelect').value = sysId;
+        loadDeviceParameters();
+      }, 100);
+    }
+
+    // --- Dropdowns population ---
+    async function loadDevicesDropdowns() {
+      if (devicesCache.length === 0) {
+        const res = await fetch('/api/manage/devices');
+        const data = await res.json();
+        devicesCache = data.devices || [];
+      }
+
+      const options = `<option value="">-- Select a device --</option>` +
+        devicesCache.map(d => `<option value="${d.system_id}">${d.name || d.system_id} (${d.system_id})</option>`).join('');
+
+      ['paramDeviceSelect', 'relayDeviceSelect', 'telemetryDeviceSelect'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          const cur = el.value;
+          el.innerHTML = options;
+          if (cur) el.value = cur;
+        }
+      });
+    }
+
+    // --- Parameters Management ---
+    async function loadDeviceParameters() {
+      const sysId = document.getElementById('paramDeviceSelect').value;
+      const tbody = document.getElementById('paramsTableBody');
+
+      if (!sysId) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">No device selected</td></tr>`;
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/manage/devices/${sysId}/parameters`);
+        const data = await res.json();
+        const params = data.parameters || [];
+
+        document.getElementById('paramListDesc').textContent = `${params.length} active parameter(s) configured for ${sysId}`;
+
+        if (params.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">No parameters configured yet. Use the builder on the left to add your first sensor.</td></tr>`;
+          document.getElementById('paramIndex').value = 0;
+          return;
+        }
+
+        // Auto-increment index suggestion
+        const maxIdx = Math.max(...params.map(p => p.param_index));
+        document.getElementById('paramIndex').value = maxIdx + 1;
+
+        tbody.innerHTML = params.map(p => {
+          return `
+            <tr>
+              <td class="mono"><strong>#${p.param_index}</strong></td>
+              <td><strong>${escapeHtml(p.param_name)}</strong></td>
+              <td><span class="badge badge-info">${p.source_type === 12 ? 'RS485' : 'Src ' + p.source_type}</span></td>
+              <td class="mono" style="font-size: 0.75rem; color: #38bdf8;">${p.modbus_req_hex || '--'}</td>
+              <td class="mono" style="font-size: 0.75rem;">×${p.mul_factor} +${p.add_factor}</td>
+              <td class="mono">${p.timeout_ms}ms</td>
+              <td>
+                <button class="btn btn-danger btn-sm" onclick="deleteParameter('${sysId}', ${p.param_index})">Delete</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      } catch (err) {
+        showToast('Error loading parameters: ' + err.message, 'error');
+      }
+    }
+
+    async function saveParameter(e) {
+      e.preventDefault();
+      const sysId = document.getElementById('paramDeviceSelect').value;
+      if (!sysId) {
+        showToast('Please select a target device', 'error');
+        return;
+      }
+
+      const payload = {
+        param_index: parseInt(document.getElementById('paramIndex').value),
+        param_name: document.getElementById('paramName').value.trim(),
+        source_type: parseInt(document.getElementById('paramSource').value),
+        baud_rate: parseInt(document.getElementById('paramBaud').value),
+        data_bits: parseInt(document.getElementById('paramDataBits').value),
+        parity: parseInt(document.getElementById('paramParity').value),
+        stop_bits: parseInt(document.getElementById('paramStopBits').value),
+        timeout_ms: parseInt(document.getElementById('paramTimeout').value) || 3000,
+        mul_factor: parseFloat(document.getElementById('paramMul').value) || 1.0,
+        add_factor: parseFloat(document.getElementById('paramAdd').value) || 0.0,
+        modbus_req_hex: document.getElementById('mbHex').value.trim()
+      };
+
+      try {
+        const res = await fetch(`/api/manage/devices/${sysId}/parameters`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || 'Failed to save');
+
+        showToast(`Parameter #${payload.param_index} "${payload.param_name}" saved!`);
+        loadDeviceParameters();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function deleteParameter(sysId, index) {
+      if (!confirm(`Delete parameter #${index}?`)) return;
+      try {
+        const res = await fetch(`/api/manage/devices/${sysId}/parameters/${index}`, { method: 'DELETE' });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || 'Failed to delete');
+        showToast(`Parameter #${index} deleted`);
+        loadDeviceParameters();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    function resetParamForm() {
+      document.getElementById('paramName').value = '';
+      document.getElementById('mbRegister').value = 0;
+      document.getElementById('mbCount').value = 2;
+      generateModbusPacket();
+    }
+
+    // --- Relay Modules Management ---
+    async function loadRelaySettings() {
+      const sysId = document.getElementById('relayDeviceSelect').value;
+      if (!sysId) return;
+
+      try {
+        const [devRes, relayRes] = await Promise.all([
+          fetch(`/api/manage/devices/${sysId}`),
+          fetch(`/api/manage/devices/${sysId}/relays`)
+        ]);
+
+        const devData = await devRes.json();
+        const relayData = await relayRes.json();
+        const dev = devData.device;
+
+        document.getElementById('mqttBroker').value = dev.mqtt_broker || '';
+        document.getElementById('mqttPort').value = dev.mqtt_port || 1883;
+        document.getElementById('mqttClientId').value = dev.mqtt_client_id || `device-${dev.config_system_id}`;
+        document.getElementById('mqttUsername').value = dev.mqtt_username || '';
+        document.getElementById('mqttPassword').value = dev.mqtt_password || '';
+        document.getElementById('mqttCommandTopic').value = dev.mqtt_command_topic || `devices/${dev.config_system_id}/relay/set`;
+        document.getElementById('mqttStatusTopic').value = dev.mqtt_status_topic || `devices/${dev.config_system_id}/relay/status`;
+
+        currentRelayModules = relayData.modules || [];
+        renderRelayModulesTable();
+      } catch (err) {
+        showToast('Error loading relay config: ' + err.message, 'error');
+      }
+    }
+
+    function renderRelayModulesTable() {
+      const tbody = document.getElementById('relayModulesTableBody');
+      if (currentRelayModules.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">No relay modules added. Click "+ Add Module" to configure an 8-channel relay board.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = currentRelayModules.map((m, idx) => `
+        <tr>
+          <td><strong>Module ${idx + 1}</strong></td>
+          <td><input type="number" value="${m.slave_id || m.slaveId}" min="1" max="247" onchange="updateRelayRow(${idx}, 'slaveId', this.value)" style="width: 100px;"></td>
+          <td><input type="number" value="8" readonly style="width: 80px; color: var(--text-muted);"></td>
+          <td><input type="number" value="${m.coil_start ?? m.coilStart ?? 0}" min="0" max="65535" onchange="updateRelayRow(${idx}, 'coilStart', this.value)" style="width: 120px;"></td>
+          <td><button class="btn btn-danger btn-sm" onclick="removeRelayModule(${idx})">Remove</button></td>
+        </tr>
+      `).join('');
+    }
+
+    function addRelayModuleRow() {
+      if (currentRelayModules.length >= 16) {
+        showToast('Maximum 16 relay modules allowed by firmware', 'error');
+        return;
+      }
+      const nextSlave = currentRelayModules.length + 1;
+      currentRelayModules.push({ slaveId: nextSlave, channels: 8, coilStart: 0 });
+      renderRelayModulesTable();
+    }
+
+    function updateRelayRow(index, field, value) {
+      if (currentRelayModules[index]) {
+        currentRelayModules[index][field] = parseInt(value) || 0;
+      }
+    }
+
+    function removeRelayModule(index) {
+      currentRelayModules.splice(index, 1);
+      renderRelayModulesTable();
+    }
+
+    async function saveRelayModules() {
+      const sysId = document.getElementById('relayDeviceSelect').value;
+      if (!sysId) {
+        showToast('Please select a device first', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/manage/devices/${sysId}/relays`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ modules: currentRelayModules })
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || 'Failed to save');
+
+        showToast(`Saved ${result.modules.length} relay module(s)!`);
+        loadDevices();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function saveDeviceMqtt(e) {
+      e.preventDefault();
+      const sysId = document.getElementById('relayDeviceSelect').value;
+      if (!sysId) {
+        showToast('Please select a device first', 'error');
+        return;
+      }
+
+      const payload = {
+        system_id: sysId,
+        mqtt_broker: document.getElementById('mqttBroker').value.trim(),
+        mqtt_port: parseInt(document.getElementById('mqttPort').value) || 1883,
+        mqtt_client_id: document.getElementById('mqttClientId').value.trim(),
+        mqtt_username: document.getElementById('mqttUsername').value.trim(),
+        mqtt_password: document.getElementById('mqttPassword').value.trim(),
+        mqtt_command_topic: document.getElementById('mqttCommandTopic').value.trim(),
+        mqtt_status_topic: document.getElementById('mqttStatusTopic').value.trim(),
+      };
+
+      try {
+        const res = await fetch('/api/manage/devices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || 'Failed to update MQTT');
+
+        showToast('MQTT settings updated successfully!');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    // --- Live Telemetry Stream ---
+    async function loadTelemetryStream() {
+      const select = document.getElementById('telemetryDeviceSelect');
+      const sysId = select ? select.value : '';
+      const tbody = document.getElementById('telemetryTableBody');
+
+      if (!sysId) {
+        // Find first device or show message
+        if (devicesCache.length > 0) {
+          select.value = devicesCache[0].system_id;
+          return loadTelemetryStream();
+        }
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">No devices registered yet</td></tr>`;
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/manage/devices/${sysId}/telemetry?limit=25`);
+        const data = await res.json();
+        const records = data.records || [];
+
+        if (records.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">No telemetry records for device ${sysId} yet. When the controller posts to /api/data, readings will stream here.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = records.map(r => {
+          const dateStr = new Date(r.device_timestamp).toLocaleString();
+          const r1 = r.relay1_status ? '<span class="badge badge-success">R1 ON</span>' : '<span class="badge" style="background:#1e293b; color:#64748b;">R1 OFF</span>';
+          const r2 = r.relay2_status ? '<span class="badge badge-success">R2 ON</span>' : '<span class="badge" style="background:#1e293b; color:#64748b;">R2 OFF</span>';
+          const r3 = r.relay3_status ? '<span class="badge badge-success">R3 ON</span>' : '<span class="badge" style="background:#1e293b; color:#64748b;">R3 OFF</span>';
+
+          const valuesHtml = (r.values || []).map(v => {
+            if (v.is_timeout) return `<span class="badge badge-warning">#${v.param_index} TIMEOUT</span>`;
+            if (v.is_error) return `<span class="badge badge-danger">#${v.param_index} COMM_ERR</span>`;
+            const name = v.param_name ? `${v.param_name}: ` : `#${v.param_index}: `;
+            return `<span class="badge badge-info">${escapeHtml(name)}${Number(v.value).toFixed(2)}</span>`;
+          }).join(' ') || '<span style="color:var(--text-muted)">None</span>';
+
+          return `
+            <tr>
+              <td class="mono"><strong>${r.system_id}</strong></td>
+              <td class="mono">${dateStr}</td>
+              <td class="mono">${r.write_counter}</td>
+              <td class="mono">${r.acquisition_counter}</td>
+              <td><span class="badge badge-info">CSQ ${r.signal_strength}</span></td>
+              <td>${r1} ${r2} ${r3}</td>
+              <td>${valuesHtml}</td>
+            </tr>
+          `;
+        }).join('');
+      } catch (err) {
+        showToast('Error loading telemetry: ' + err.message, 'error');
+      }
+    }
+
+    // --- Modal Controls ---
+    function openDeviceModal() {
+      document.getElementById('deviceForm').reset();
+      document.getElementById('deviceModalTitle').textContent = 'Register New Device';
+      document.getElementById('deviceModal').classList.add('show');
+    }
+
+    function closeDeviceModal() {
+      document.getElementById('deviceModal').classList.remove('show');
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // Initialize on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      loadDevices();
+      generateModbusPacket();
+    });
+  </script>
+</body>
+</html>

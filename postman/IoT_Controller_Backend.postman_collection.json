@@ -1,0 +1,464 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "IoT Controller Backend",
+    "description": "Complete Postman collection for the IoT Controller Backend (Renesas RL78/G13 hardware).\n\nIncludes:\n1. Hardware Firmware Endpoints (Registration, Config, DAQ Parameters, Telemetry, Relay Modules)\n2. Management REST APIs (Devices, Modbus Parameters, Relays, Telemetry Records, Modbus CRC Tool)\n3. Health Check",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Hardware Firmware Endpoints",
+      "description": "Direct endpoints called by the IoT Controller's cellular modem firmware.",
+      "item": [
+        {
+          "name": "Phase 1: Device Registration",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains $SysID token\", function () {",
+                  "    const text = pm.response.text();",
+                  "    const match = text.match(/\\$SysID=([0-9A-Fa-f]{8})#/);",
+                  "    pm.expect(match).to.not.be.null;",
+                  "    if (match) {",
+                  "        const wireId = match[1];",
+                  "        pm.environment.set(\"wire_system_id\", wireId);",
+                  "        ",
+                  "        // Reverse byte pairs for config-order hex",
+                  "        const bytes = wireId.match(/.{2}/g);",
+                  "        const configId = bytes.reverse().join('').toUpperCase();",
+                  "        pm.environment.set(\"config_system_id\", configId);",
+                  "        console.log(\"Saved wire_system_id: \" + wireId + \", config_system_id: \" + configId);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "IMIENumber",
+                  "value": "{{imei}}",
+                  "description": "15-digit device IMEI number",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "register"]
+            },
+            "description": "Called by device on first boot. Device posts IMIENumber and receives plain-text token: $SysID=<8-char hex>#."
+          },
+          "response": []
+        },
+        {
+          "name": "Phase 2: System Configuration",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Contains system configuration fields\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"SYSTEM_ID\");",
+                  "    pm.expect(json).to.have.property(\"SERVER_ADD\");",
+                  "    pm.expect(json).to.have.property(\"SERVER_PORT\");",
+                  "    pm.expect(json).to.have.property(\"SER_APP_DATA\");",
+                  "    pm.expect(json).to.have.property(\"NO_OF_PARAMETERS\");",
+                  "    pm.expect(json).to.have.property(\"DATA_ACQ_MINUTES\");",
+                  "    pm.expect(json).to.have.property(\"DATA_TRANS_MINUTES\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"TYPE\": \"SERVER_DETAILS\",\n  \"SYSTEM_ID\": \"{{config_system_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/system-config",
+              "host": ["{{base_url}}"],
+              "path": ["api", "system-config"]
+            },
+            "description": "Called by device after registration to retrieve operational intervals, endpoint routes, and parameter count."
+          },
+          "response": []
+        },
+        {
+          "name": "Phase 3: DAQ Parameter Configuration",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Returns PARA array\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.TYPE).to.eql(\"PARA_CONFIG\");",
+                  "    pm.expect(json).to.have.property(\"PARA\");",
+                  "    pm.expect(Array.isArray(json.PARA)).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"TYPE\": \"PARA_CONFIG\",\n  \"SYS_ID\": \"{{config_system_id}}\",\n  \"FROM\": \"000\",\n  \"TO\": \"009\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/param-config",
+              "host": ["{{base_url}}"],
+              "path": ["api", "param-config"]
+            },
+            "description": "Downloads sensor & Modbus register table into device EEPROM in batches of up to 10 entries."
+          },
+          "response": []
+        },
+        {
+          "name": "Phase 4: Telemetry Data Upload",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Returns IST clock sync token\", function () {",
+                  "    const text = pm.response.text();",
+                  "    pm.expect(text).to.match(/Packet Inserted >\\$IST=\\d{14}#/);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "DATA000",
+                  "value": "01000000{{wire_system_id}}191126153000280100000100000002000000E17A48420000C842",
+                  "description": "26-byte wire header + N IEEE-754 Little-Endian float parameters",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/data",
+              "host": ["{{base_url}}"],
+              "path": ["api", "data"]
+            },
+            "description": "Periodic sensor readings upload by device. Responds with IST clock-sync token: Packet Inserted >$IST=YYYYMMDDHHmmss#."
+          },
+          "response": []
+        },
+        {
+          "name": "Phase 5: Relay Modules Configuration",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Contains MQTT and MODULES fields\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.TYPE).to.eql(\"RELAY_MODULE_CONFIG\");",
+                  "    pm.expect(json).to.have.property(\"MQTT_BROKER\");",
+                  "    pm.expect(json).to.have.property(\"MODULES\");",
+                  "    pm.expect(Array.isArray(json.MODULES)).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"TYPE\": \"RELAY_MODULE_CONFIG\",\n  \"SYSTEM_ID\": \"{{config_system_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/relay-config",
+              "host": ["{{base_url}}"],
+              "path": ["api", "relay-config"]
+            },
+            "description": "Downloads MQTT broker credentials and external 8-channel Modbus RTU relay modules list."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Management & Configuration API",
+      "description": "REST APIs powering the web studio dashboard and external management integrations.",
+      "item": [
+        {
+          "name": "List Devices",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/manage/devices",
+              "host": ["{{base_url}}"],
+              "path": ["api", "manage", "devices"]
+            },
+            "description": "Returns list of all devices with parameter counts, relay counts, and last seen timestamps."
+          },
+          "response": []
+        },
+        {
+          "name": "Create or Update Device",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"imei\": \"{{imei}}\",\n  \"name\": \"Substation Main Controller\",\n  \"server_add\": \"localhost\",\n  \"server_port\": \"8080\",\n  \"acq_interval_min\": 1,\n  \"trans_interval_min\": 1,\n  \"mqtt_broker\": \"broker.example.net\",\n  \"mqtt_port\": 1883,\n  \"mqtt_client_id\": \"device-{{config_system_id}}\",\n  \"mqtt_username\": \"device-user\",\n  \"mqtt_password\": \"device-secret\",\n  \"mqtt_command_topic\": \"devices/{{config_system_id}}/relay/set\",\n  \"mqtt_status_topic\": \"devices/{{config_system_id}}/relay/status\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/manage/devices",
+              "host": ["{{base_url}}"],
+              "path": ["api", "manage", "devices"]
+            },
+            "description": "Creates or updates device metadata, intervals, and MQTT settings."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Device Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/manage/devices/{{wire_system_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "manage", "devices", "{{wire_system_id}}"]
+            },
+            "description": "Retrieves configuration details for a specific device."
+          },
+          "response": []
+        },
+        {
+          "name": "List Device DAQ Parameters",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/manage/devices/{{wire_system_id}}/parameters",
+              "host": ["{{base_url}}"],
+              "path": ["api", "manage", "devices", "{{wire_system_id}}", "parameters"]
+            },
+            "description": "Lists all configured DAQ parameters along with their 30-char compact wire strings."
+          },
+          "response": []
+        },
+        {
+          "name": "Save Modbus Parameter",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"param_index\": 0,\n  \"param_name\": \"Active P\",\n  \"source_type\": 12,\n  \"baud_rate\": 3,\n  \"data_bits\": 0,\n  \"parity\": 0,\n  \"stop_bits\": 0,\n  \"timeout_ms\": 3000,\n  \"mul_factor\": 1.0,\n  \"add_factor\": 0.0,\n  \"modbus_req_hex\": \"010300000002C40B\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/manage/devices/{{wire_system_id}}/parameters",
+              "host": ["{{base_url}}"],
+              "path": ["api", "manage", "devices", "{{wire_system_id}}", "parameters"]
+            },
+            "description": "Upserts a parameter configuration with Modbus query hex frame (verified with CRC-16)."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Parameter",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/manage/devices/{{wire_system_id}}/parameters/0",
+              "host": ["{{base_url}}"],
+              "path": ["api", "manage", "devices", "{{wire_system_id}}", "parameters", "0"]
+            },
+            "description": "Deletes a parameter by index."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Relay Modules",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/manage/devices/{{wire_system_id}}/relays",
+              "host": ["{{base_url}}"],
+              "path": ["api", "manage", "devices", "{{wire_system_id}}", "relays"]
+            },
+            "description": "Retrieves the list of external Modbus RTU relay modules configured for this device."
+          },
+          "response": []
+        },
+        {
+          "name": "Save Relay Modules",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"modules\": [\n    {\n      \"slaveId\": 1,\n      \"channels\": 8,\n      \"coilStart\": 0\n    },\n    {\n      \"slaveId\": 2,\n      \"channels\": 8,\n      \"coilStart\": 0\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/manage/devices/{{wire_system_id}}/relays",
+              "host": ["{{base_url}}"],
+              "path": ["api", "manage", "devices", "{{wire_system_id}}", "relays"]
+            },
+            "description": "Saves 0 to 16 external Modbus RTU relay modules for this device."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Device Telemetry Records",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/manage/devices/{{wire_system_id}}/telemetry?limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "manage", "devices", "{{wire_system_id}}", "telemetry"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Returns the latest telemetry records with decoded sensor values and status sentinels."
+          },
+          "response": []
+        },
+        {
+          "name": "Calculate Modbus Frame & CRC16",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slaveId\": 1,\n  \"functionCode\": 3,\n  \"startRegister\": 0,\n  \"count\": 2\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/manage/modbus/crc",
+              "host": ["{{base_url}}"],
+              "path": ["api", "manage", "modbus", "crc"]
+            },
+            "description": "Generates complete Modbus RTU request frame with Little-Endian CRC-16."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Health Check",
+      "item": [
+        {
+          "name": "Service Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Checks backend availability and current server timestamp."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
