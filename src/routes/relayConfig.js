@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import pool from '../db/pool.js';
+import { Device, RelayModule } from '../db/models/index.js';
 import { reverseHexBytes } from '../utils/hexCodec.js';
 
 const router = Router();
@@ -26,29 +26,20 @@ router.post('/', async (req, res) => {
     }
 
     // Convert config-order "00000D5E" -> wire-order "5E0D0000" for DB lookup
-    const wireId = reverseHexBytes(configSysId);
+    const wireId = reverseHexBytes(String(configSysId).trim().toUpperCase());
 
-    const deviceResult = await pool.query(
-      'SELECT * FROM devices WHERE system_id = $1',
-      [wireId]
-    );
+    const device = await Device.findOne({ system_id: wireId }).lean();
 
-    if (deviceResult.rows.length === 0) {
+    if (!device) {
       return res.status(404).json({ status: 'error', msg: 'Device not found' });
     }
 
-    const device = deviceResult.rows[0];
-
     // Fetch configured relay modules for this device (0 to 16 modules)
-    const modulesResult = await pool.query(
-      `SELECT slave_id, channels, coil_start
-       FROM relay_modules
-       WHERE system_id = $1
-       ORDER BY slave_id ASC`,
-      [wireId]
-    );
+    const modulesDocs = await RelayModule.find({ system_id: wireId })
+      .sort({ slave_id: 1 })
+      .lean();
 
-    const modules = modulesResult.rows.map(row => ({
+    const modules = modulesDocs.map((row) => ({
       slaveId: row.slave_id,
       channels: row.channels || 8,
       coilStart: row.coil_start || 0,

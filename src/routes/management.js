@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import pool from '../db/pool.js';
+import { Device, DeviceParameter, RelayModule, TelemetryRecord, Counter } from '../db/models/index.js';
 import { reverseHexBytes, encodeParamString, intToWireHex } from '../utils/hexCodec.js';
 import {
   calculateModbusCRC,
@@ -15,14 +15,14 @@ async function findDeviceByAnyId(idStr) {
   const clean = idStr.trim().toUpperCase();
 
   // Try direct match (wire-order)
-  let res = await pool.query('SELECT * FROM devices WHERE system_id = $1', [clean]);
-  if (res.rows.length > 0) return res.rows[0];
+  let doc = await Device.findOne({ system_id: clean }).lean();
+  if (doc) return doc;
 
   // Try reversed (config-order)
   if (clean.length === 8) {
     const reversed = reverseHexBytes(clean);
-    res = await pool.query('SELECT * FROM devices WHERE system_id = $1', [reversed]);
-    if (res.rows.length > 0) return res.rows[0];
+    doc = await Device.findOne({ system_id: reversed }).lean();
+    if (doc) return doc;
   }
 
   return null;
@@ -36,29 +36,23 @@ async function findDeviceByAnyId(idStr) {
  */
 router.get('/devices', async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT
-        d.*,
-        COALESCE(p.param_count, 0)::int AS param_count,
-        COALESCE(r.relay_count, 0)::int AS relay_count
-      FROM devices d
-      LEFT JOIN (
-        SELECT system_id, COUNT(*) AS param_count
-        FROM device_parameters
-        GROUP BY system_id
-      ) p ON d.system_id = p.system_id
-      LEFT JOIN (
-        SELECT system_id, COUNT(*) AS relay_count
-        FROM relay_modules
-        GROUP BY system_id
-      ) r ON d.system_id = r.system_id
-      ORDER BY d.created_at DESC
-    `);
+    const deviceDocs = await Device.find().sort({ created_at: -1 }).lean();
 
-    const devices = result.rows.map((row) => ({
-      ...row,
-      config_system_id: reverseHexBytes(row.system_id),
-    }));
+    const devices = await Promise.all(
+      deviceDocs.map(async (d) => {
+        const [paramCount, relayCount] = await Promise.all([
+          DeviceParameter.countDocuments({ system_id: d.system_id }),
+          RelayModule.countDocuments({ system_id: d.system_id }),
+        ]);
+
+        return {
+          ...d,
+          param_count: paramCount,
+          relay_count: relayCount,
+          config_system_id: reverseHexBytes(d.system_id),
+        };
+      })
+    );
 
     return res.json({ devices });
   } catch (err) {
@@ -95,94 +89,73 @@ router.post('/devices', async (req, res) => {
       return res.status(400).json({ error: 'IMEI is required' });
     }
 
+    const cleanImei = String(imei).trim();
     let wireId = system_id ? system_id.trim().toUpperCase() : null;
 
     // Check if device exists by IMEI or system_id
-    let existing;
+    let existing = null;
     if (wireId) {
       existing = await findDeviceByAnyId(wireId);
     }
     if (!existing) {
-      const imeiCheck = await pool.query('SELECT * FROM devices WHERE imei = $1', [imei]);
-      if (imeiCheck.rows.length > 0) existing = imeiCheck.rows[0];
+      existing = await Device.findOne({ imei: cleanImei }).lean();
     }
 
+    let saved;
     if (existing) {
-      // Update existing device
       wireId = existing.system_id;
-      await pool.query(
-        `UPDATE devices SET
-          name = COALESCE($1, name),
-          server_add = COALESCE($2, server_add),
-          server_port = COALESCE($3, server_port),
-          server_path = COALESCE($4, server_path),
-          acq_interval_min = COALESCE($5, acq_interval_min),
-          trans_interval_min = COALESCE($6, trans_interval_min),
-          mqtt_broker = COALESCE($7, mqtt_broker),
-          mqtt_port = COALESCE($8, mqtt_port),
-          mqtt_client_id = COALESCE($9, mqtt_client_id),
-          mqtt_username = COALESCE($10, mqtt_username),
-          mqtt_password = COALESCE($11, mqtt_password),
-          mqtt_command_topic = COALESCE($12, mqtt_command_topic),
-          mqtt_status_topic = COALESCE($13, mqtt_status_topic)
-        WHERE system_id = $14`,
-        [
-          name,
-          server_add,
-          server_port,
-          server_path,
-          acq_interval_min,
-          trans_interval_min,
-          mqtt_broker,
-          mqtt_port,
-          mqtt_client_id,
-          mqtt_username,
-          mqtt_password,
-          mqtt_command_topic,
-          mqtt_status_topic,
-          wireId,
-        ]
-      );
+      const updateData = {};
+      if (name !== undefined) updateData.name = name;
+      if (server_add !== undefined) updateData.server_add = server_add;
+      if (server_port !== undefined) updateData.server_port = server_port;
+      if (server_path !== undefined) updateData.server_path = server_path;
+      if (acq_interval_min !== undefined) updateData.acq_interval_min = acq_interval_min;
+      if (trans_interval_min !== undefined) updateData.trans_interval_min = trans_interval_min;
+      if (mqtt_broker !== undefined) updateData.mqtt_broker = mqtt_broker;
+      if (mqtt_port !== undefined) updateData.mqtt_port = mqtt_port;
+      if (mqtt_client_id !== undefined) updateData.mqtt_client_id = mqtt_client_id;
+      if (mqtt_username !== undefined) updateData.mqtt_username = mqtt_username;
+      if (mqtt_password !== undefined) updateData.mqtt_password = mqtt_password;
+      if (mqtt_command_topic !== undefined) updateData.mqtt_command_topic = mqtt_command_topic;
+      if (mqtt_status_topic !== undefined) updateData.mqtt_status_topic = mqtt_status_topic;
+
+      saved = await Device.findOneAndUpdate(
+        { system_id: wireId },
+        { $set: updateData },
+        { new: true }
+      ).lean();
     } else {
       // Create new device: generate system_id if not provided
       if (!wireId) {
-        const seqRes = await pool.query("SELECT nextval('device_id_seq') AS id");
-        wireId = intToWireHex(parseInt(seqRes.rows[0].id, 10));
+        const deviceInt = await Counter.getNextSequence('device_id');
+        wireId = intToWireHex(deviceInt);
       }
 
-      await pool.query(
-        `INSERT INTO devices (
-          system_id, imei, name, server_add, server_port, server_path,
-          acq_interval_min, trans_interval_min,
-          mqtt_broker, mqtt_port, mqtt_client_id, mqtt_username, mqtt_password,
-          mqtt_command_topic, mqtt_status_topic
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
-        [
-          wireId,
-          imei,
-          name || `Device-${wireId}`,
-          server_add || process.env.DEFAULT_SERVER_ADD || 'localhost',
-          server_port || process.env.DEFAULT_SERVER_PORT || '8080',
-          server_path || process.env.DEFAULT_SERVER_PATH || '/',
-          acq_interval_min || 1,
-          trans_interval_min || 1,
-          mqtt_broker || 'broker.example.net',
-          mqtt_port || 1883,
-          mqtt_client_id || `device-${reverseHexBytes(wireId)}`,
-          mqtt_username || '',
-          mqtt_password || '',
-          mqtt_command_topic || `devices/${reverseHexBytes(wireId)}/relay/set`,
-          mqtt_status_topic || `devices/${reverseHexBytes(wireId)}/relay/status`,
-        ]
-      );
+      saved = await Device.create({
+        system_id: wireId,
+        imei: cleanImei,
+        name: name || `Device-${wireId}`,
+        server_add: server_add || process.env.DEFAULT_SERVER_ADD || 'localhost',
+        server_port: server_port || process.env.DEFAULT_SERVER_PORT || '8080',
+        server_path: server_path || process.env.DEFAULT_SERVER_PATH || '/',
+        acq_interval_min: acq_interval_min || 1,
+        trans_interval_min: trans_interval_min || 1,
+        mqtt_broker: mqtt_broker || 'broker.example.net',
+        mqtt_port: mqtt_port || 1883,
+        mqtt_client_id: mqtt_client_id || `device-${reverseHexBytes(wireId)}`,
+        mqtt_username: mqtt_username || '',
+        mqtt_password: mqtt_password || '',
+        mqtt_command_topic: mqtt_command_topic || `devices/${reverseHexBytes(wireId)}/relay/set`,
+        mqtt_status_topic: mqtt_status_topic || `devices/${reverseHexBytes(wireId)}/relay/status`,
+      });
+      saved = saved.toObject();
     }
 
-    const saved = await pool.query('SELECT * FROM devices WHERE system_id = $1', [wireId]);
     return res.json({
       success: true,
       device: {
-        ...saved.rows[0],
-        config_system_id: reverseHexBytes(saved.rows[0].system_id),
+        ...saved,
+        config_system_id: reverseHexBytes(saved.system_id),
       },
     });
   } catch (err) {
@@ -222,15 +195,12 @@ router.get('/devices/:systemId/parameters', async (req, res) => {
     const device = await findDeviceByAnyId(req.params.systemId);
     if (!device) return res.status(404).json({ error: 'Device not found' });
 
-    const result = await pool.query(
-      `SELECT * FROM device_parameters
-       WHERE system_id = $1
-       ORDER BY param_index ASC`,
-      [device.system_id]
-    );
+    const params = await DeviceParameter.find({ system_id: device.system_id })
+      .sort({ param_index: 1 })
+      .lean();
 
     // Compute preview compact string for each parameter
-    const parameters = result.rows.map((row) => ({
+    const parameters = params.map((row) => ({
       ...row,
       compact_wire_string: encodeParamString(row),
     }));
@@ -298,66 +268,41 @@ router.post('/devices/:systemId/parameters', async (req, res) => {
       }
     }
 
-    // Upsert into device_parameters
-    await pool.query(
-      `INSERT INTO device_parameters (
-        system_id, param_index, param_name, source_type, para_type,
-        rs485_mode, rs485_data_type, baud_rate, data_bits, parity, stop_bits,
-        timeout_ms, mul_factor, add_factor, modbus_req_hex
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-      ON CONFLICT (system_id, param_index) DO UPDATE SET
-        param_name = EXCLUDED.param_name,
-        source_type = EXCLUDED.source_type,
-        para_type = EXCLUDED.para_type,
-        rs485_mode = EXCLUDED.rs485_mode,
-        rs485_data_type = EXCLUDED.rs485_data_type,
-        baud_rate = EXCLUDED.baud_rate,
-        data_bits = EXCLUDED.data_bits,
-        parity = EXCLUDED.parity,
-        stop_bits = EXCLUDED.stop_bits,
-        timeout_ms = EXCLUDED.timeout_ms,
-        mul_factor = EXCLUDED.mul_factor,
-        add_factor = EXCLUDED.add_factor,
-        modbus_req_hex = EXCLUDED.modbus_req_hex`,
-      [
-        device.system_id,
-        index,
-        trimmedName,
-        source_type ?? 12,
-        para_type ?? 0,
-        rs485_mode ?? 0,
-        rs485_data_type ?? 1,
-        baud_rate ?? 0,
-        data_bits ?? 0,
-        parity ?? 0,
-        stop_bits ?? 0,
-        timeout_ms ?? 3000,
-        mul_factor ?? 1.0,
-        add_factor ?? 0.0,
-        cleanedModbusHex,
-      ]
-    );
+    // Upsert into DeviceParameter
+    const saved = await DeviceParameter.findOneAndUpdate(
+      { system_id: device.system_id, param_index: index },
+      {
+        $set: {
+          param_name: trimmedName,
+          source_type: source_type ?? 12,
+          para_type: para_type ?? 0,
+          rs485_mode: rs485_mode ?? 0,
+          rs485_data_type: rs485_data_type ?? 1,
+          baud_rate: baud_rate ?? 0,
+          data_bits: data_bits ?? 0,
+          parity: parity ?? 0,
+          stop_bits: stop_bits ?? 0,
+          timeout_ms: timeout_ms ?? 3000,
+          mul_factor: mul_factor ?? 1.0,
+          add_factor: add_factor ?? 0.0,
+          modbus_req_hex: cleanedModbusHex,
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    ).lean();
 
-    // Update count in devices table
-    const countRes = await pool.query(
-      'SELECT COUNT(*)::int AS cnt FROM device_parameters WHERE system_id = $1',
-      [device.system_id]
-    );
-    await pool.query('UPDATE devices SET no_of_parameters = $1 WHERE system_id = $2', [
-      countRes.rows[0].cnt,
-      device.system_id,
-    ]);
-
-    const saved = await pool.query(
-      'SELECT * FROM device_parameters WHERE system_id = $1 AND param_index = $2',
-      [device.system_id, index]
+    // Update count in devices
+    const totalCount = await DeviceParameter.countDocuments({ system_id: device.system_id });
+    await Device.updateOne(
+      { system_id: device.system_id },
+      { $set: { no_of_parameters: totalCount } }
     );
 
     return res.json({
       success: true,
       parameter: {
-        ...saved.rows[0],
-        compact_wire_string: encodeParamString(saved.rows[0]),
+        ...saved,
+        compact_wire_string: encodeParamString(saved),
       },
     });
   } catch (err) {
@@ -376,21 +321,18 @@ router.delete('/devices/:systemId/parameters/:paramIndex', async (req, res) => {
     if (!device) return res.status(404).json({ error: 'Device not found' });
 
     const index = parseInt(req.params.paramIndex, 10);
-    await pool.query(
-      'DELETE FROM device_parameters WHERE system_id = $1 AND param_index = $2',
-      [device.system_id, index]
+    await DeviceParameter.deleteOne({
+      system_id: device.system_id,
+      param_index: index,
+    });
+
+    const totalCount = await DeviceParameter.countDocuments({ system_id: device.system_id });
+    await Device.updateOne(
+      { system_id: device.system_id },
+      { $set: { no_of_parameters: totalCount } }
     );
 
-    const countRes = await pool.query(
-      'SELECT COUNT(*)::int AS cnt FROM device_parameters WHERE system_id = $1',
-      [device.system_id]
-    );
-    await pool.query('UPDATE devices SET no_of_parameters = $1 WHERE system_id = $2', [
-      countRes.rows[0].cnt,
-      device.system_id,
-    ]);
-
-    return res.json({ success: true, remaining: countRes.rows[0].cnt });
+    return res.json({ success: true, remaining: totalCount });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -407,17 +349,14 @@ router.get('/devices/:systemId/relays', async (req, res) => {
     const device = await findDeviceByAnyId(req.params.systemId);
     if (!device) return res.status(404).json({ error: 'Device not found' });
 
-    const result = await pool.query(
-      `SELECT * FROM relay_modules
-       WHERE system_id = $1
-       ORDER BY slave_id ASC`,
-      [device.system_id]
-    );
+    const modules = await RelayModule.find({ system_id: device.system_id })
+      .sort({ slave_id: 1 })
+      .lean();
 
     return res.json({
       system_id: device.system_id,
       config_system_id: reverseHexBytes(device.system_id),
-      modules: result.rows,
+      modules,
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -442,46 +381,40 @@ router.post('/devices/:systemId/relays', async (req, res) => {
       return res.status(400).json({ error: 'Firmware limit: maximum 16 relay modules' });
     }
 
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query('DELETE FROM relay_modules WHERE system_id = $1', [device.system_id]);
+    const seenSlaves = new Set();
+    const toInsert = [];
+    for (const m of modules) {
+      const slaveId = parseInt(m.slaveId ?? m.slave_id, 10);
+      const channels = parseInt(m.channels ?? 8, 10);
+      const coilStart = parseInt(m.coilStart ?? m.coil_start ?? 0, 10);
 
-      const seenSlaves = new Set();
-      for (const m of modules) {
-        const slaveId = parseInt(m.slaveId ?? m.slave_id, 10);
-        const channels = parseInt(m.channels ?? 8, 10);
-        const coilStart = parseInt(m.coilStart ?? m.coil_start ?? 0, 10);
-
-        if (isNaN(slaveId) || slaveId < 1 || slaveId > 247) {
-          throw new Error(`Invalid Slave ID ${slaveId}: must be 1 to 247`);
-        }
-        if (seenSlaves.has(slaveId)) {
-          throw new Error(`Duplicate Slave ID ${slaveId} specified in relay modules`);
-        }
-        seenSlaves.add(slaveId);
-
-        await client.query(
-          `INSERT INTO relay_modules (system_id, slave_id, channels, coil_start)
-           VALUES ($1, $2, $3, $4)`,
-          [device.system_id, slaveId, channels, coilStart]
-        );
+      if (isNaN(slaveId) || slaveId < 1 || slaveId > 247) {
+        return res.status(400).json({ error: `Invalid Slave ID ${slaveId}: must be 1 to 247` });
       }
+      if (seenSlaves.has(slaveId)) {
+        return res.status(400).json({ error: `Duplicate Slave ID ${slaveId} specified in relay modules` });
+      }
+      seenSlaves.add(slaveId);
 
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
+      toInsert.push({
+        system_id: device.system_id,
+        slave_id: slaveId,
+        channels,
+        coil_start: coilStart,
+      });
     }
 
-    const saved = await pool.query(
-      'SELECT * FROM relay_modules WHERE system_id = $1 ORDER BY slave_id ASC',
-      [device.system_id]
-    );
+    // Replace relay modules for this device
+    await RelayModule.deleteMany({ system_id: device.system_id });
+    if (toInsert.length > 0) {
+      await RelayModule.insertMany(toInsert);
+    }
 
-    return res.json({ success: true, modules: saved.rows });
+    const saved = await RelayModule.find({ system_id: device.system_id })
+      .sort({ slave_id: 1 })
+      .lean();
+
+    return res.json({ success: true, modules: saved });
   } catch (err) {
     console.error('[MANAGE] Error saving relay modules:', err);
     return res.status(500).json({ error: err.message });
@@ -501,41 +434,36 @@ router.get('/devices/:systemId/telemetry', async (req, res) => {
 
     const limit = parseInt(req.query.limit || '20', 10);
 
-    const recordsRes = await pool.query(
-      `SELECT * FROM telemetry_records
-       WHERE system_id = $1
-       ORDER BY device_timestamp DESC, id DESC
-       LIMIT $2`,
-      [device.system_id, limit]
-    );
+    const recordDocs = await TelemetryRecord.find({ system_id: device.system_id })
+      .sort({ device_timestamp: -1, _id: -1 })
+      .limit(limit)
+      .lean();
 
-    if (recordsRes.rows.length === 0) {
+    if (recordDocs.length === 0) {
       return res.json({ records: [] });
     }
 
-    const ids = recordsRes.rows.map((r) => r.id);
-    const valuesRes = await pool.query(
-      `SELECT tv.*, dp.param_name
-       FROM telemetry_values tv
-       LEFT JOIN device_parameters dp
-         ON dp.system_id = $1 AND dp.param_index = tv.param_index
-       WHERE tv.telemetry_id = ANY($2::bigint[])
-       ORDER BY tv.telemetry_id DESC, tv.param_index ASC`,
-      [device.system_id, ids]
-    );
-
-    // Group values by telemetry_id
-    const valuesByRecord = new Map();
-    for (const v of valuesRes.rows) {
-      if (!valuesByRecord.has(v.telemetry_id)) {
-        valuesByRecord.set(v.telemetry_id, []);
-      }
-      valuesByRecord.get(v.telemetry_id).push(v);
+    // Build map of param_index -> param_name
+    const paramDocs = await DeviceParameter.find({ system_id: device.system_id }).lean();
+    const paramNameMap = new Map();
+    for (const p of paramDocs) {
+      paramNameMap.set(p.param_index, p.param_name);
     }
 
-    const records = recordsRes.rows.map((r) => ({
-      ...r,
-      values: valuesByRecord.get(r.id) || [],
+    const records = recordDocs.map((r) => ({
+      id: r._id,
+      system_id: r.system_id,
+      device_timestamp: r.device_timestamp,
+      write_counter: r.write_counter,
+      acquisition_counter: r.acquisition_counter,
+      signal_strength: r.signal_strength,
+      relay1_status: r.relay1_status,
+      relay2_status: r.relay2_status,
+      relay3_status: r.relay3_status,
+      values: (r.values || []).map((v) => ({
+        ...v,
+        param_name: paramNameMap.get(v.param_index) || null,
+      })),
     }));
 
     return res.json({ records });

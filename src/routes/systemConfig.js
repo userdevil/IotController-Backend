@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import pool from '../db/pool.js';
+import { Device, DeviceParameter } from '../db/models/index.js';
 import { reverseHexBytes } from '../utils/hexCodec.js';
 
 const router = Router();
@@ -16,8 +16,8 @@ const router = Router();
  */
 router.post('/', async (req, res) => {
   try {
-    const reqType = req.body.TYPE || req.body.type;
-    const configSysId = req.body.SYSTEM_ID || req.body.SYS_ID;
+    const reqType = req.body?.TYPE || req.body?.type;
+    const configSysId = req.body?.SYSTEM_ID || req.body?.SYS_ID;
 
     if (reqType !== 'SERVER_DETAILS') {
       return res.status(400).json({ status: 'error', msg: 'Invalid TYPE' });
@@ -28,32 +28,24 @@ router.post('/', async (req, res) => {
     }
 
     // Convert config-order "00000D5E" → wire-order "5E0D0000" for DB lookup
-    const wireId = reverseHexBytes(configSysId);
+    const wireId = reverseHexBytes(String(configSysId).trim().toUpperCase());
 
-    const result = await pool.query(
-      'SELECT * FROM devices WHERE system_id = $1',
-      [wireId]
-    );
+    const device = await Device.findOne({ system_id: wireId }).lean();
 
-    if (result.rows.length === 0) {
+    if (!device) {
       return res.status(404).json({ status: 'error', msg: 'Device not found' });
     }
 
-    const device = result.rows[0];
-
     // Count configured parameters
-    const paramResult = await pool.query(
-      'SELECT COUNT(*)::int AS cnt FROM device_parameters WHERE system_id = $1',
-      [wireId]
-    );
-    const paramCount = paramResult.rows[0].cnt || device.no_of_parameters || 0;
+    const paramCount = await DeviceParameter.countDocuments({ system_id: wireId });
+    const finalParamCount = paramCount || device.no_of_parameters || 0;
 
     // Format fields per firmware expectations
-    const paramCountHex = paramCount.toString(16).toUpperCase().padStart(2, '0');
+    const paramCountHex = finalParamCount.toString(16).toUpperCase().padStart(2, '0');
     const acqHex = (device.acq_interval_min || 1).toString(16).toUpperCase().padStart(8, '0');
     const transHex = (device.trans_interval_min || 1).toString(16).toUpperCase().padStart(8, '0');
 
-    console.log(`[SYSTEM_CONFIG] Device: ${configSysId}, Params: ${paramCount}`);
+    console.log(`[SYSTEM_CONFIG] Device: ${configSysId}, Params: ${finalParamCount}`);
 
     return res.json({
       SYSTEM_ID: configSysId.toUpperCase(),

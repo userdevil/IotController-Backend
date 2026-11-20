@@ -1,8 +1,8 @@
-# IoT Controller — Node.js & PostgreSQL Backend
+# IoT Controller — Node.js & MongoDB Backend
 
 A high-performance backend server and web studio for industrial IoT controllers based on the Renesas RL78/G13 hardware platform.
 
-Built with **Node.js (ESM)**, **Express**, and **PostgreSQL**.
+Built with **Node.js (ESM)**, **Express**, and **MongoDB (Mongoose)**.
 
 ---
 
@@ -26,7 +26,7 @@ Built with **Node.js (ESM)**, **Express**, and **PostgreSQL**.
 
 ### 1. Prerequisites
 - [Node.js](https://nodejs.org/) v20 or higher
-- [PostgreSQL](https://www.postgresql.org/) database
+- [MongoDB](https://www.mongodb.com/) (running locally or in Docker)
 
 ### 2. Installation
 ```bash
@@ -36,27 +36,23 @@ npm install
 ```
 
 ### 3. Environment Configuration
-Copy `.env.example` to `.env` and update your PostgreSQL credentials:
+Copy `.env.example` to `.env` and verify your MongoDB URI:
 ```bash
 cp .env.example .env
 ```
 Example `.env`:
 ```env
 PORT=8080
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=iot_controller
-DB_USER=postgres
-DB_PASSWORD=postgres
+MONGODB_URI=mongodb://127.0.0.1:27017/iot_controller
 DEFAULT_SERVER_ADD=localhost
 DEFAULT_SERVER_PORT=8080
 DEFAULT_SERVER_PATH=/
 ```
 
-### 4. Database Migration
-Run database schema migrations to create the required tables:
+### 4. Database Schema Initialization
+Run database initialization to create the required collections and indexes:
 ```bash
-npm run db:migrate
+npm run db:init
 ```
 
 ### 5. Start Server

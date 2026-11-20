@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import pool from '../db/pool.js';
+import { DeviceParameter } from '../db/models/index.js';
 import { reverseHexBytes, encodeParamString } from '../utils/hexCodec.js';
 
 const router = Router();
@@ -15,10 +15,10 @@ const router = Router();
  */
 router.post('/', async (req, res) => {
   try {
-    const reqType = req.body.TYPE || req.body.type;
-    const configSysId = req.body.SYS_ID || req.body.SYSTEM_ID;
-    const fromIdx = parseInt(req.body.FROM || '0', 10);
-    const toIdx = parseInt(req.body.TO || '0', 10);
+    const reqType = req.body?.TYPE || req.body?.type;
+    const configSysId = req.body?.SYS_ID || req.body?.SYSTEM_ID;
+    const fromIdx = parseInt(req.body?.FROM || '0', 10);
+    const toIdx = parseInt(req.body?.TO || '0', 10);
 
     if (reqType !== 'PARA_CONFIG') {
       return res.status(400).json({ status: 'error', msg: 'Invalid TYPE' });
@@ -29,23 +29,25 @@ router.post('/', async (req, res) => {
     }
 
     // Convert config-order → wire-order for DB lookup
-    const wireId = reverseHexBytes(configSysId);
+    const wireId = reverseHexBytes(String(configSysId).trim().toUpperCase());
 
-    const result = await pool.query(
-      `SELECT * FROM device_parameters
-       WHERE system_id = $1 AND param_index >= $2 AND param_index <= $3
-       ORDER BY param_index`,
-      [wireId, fromIdx, toIdx]
-    );
+    const params = await DeviceParameter.find({
+      system_id: wireId,
+      param_index: { $gte: fromIdx, $lte: toIdx },
+    })
+      .sort({ param_index: 1 })
+      .lean();
 
     // Build compact parameter strings, each wrapped in a one-element array
-    const paraArray = result.rows.map(row => [encodeParamString(row)]);
+    const paraArray = params.map((row) => [encodeParamString(row)]);
 
-    const actualTo = result.rows.length > 0
-      ? result.rows[result.rows.length - 1].param_index
+    const actualTo = params.length > 0
+      ? params[params.length - 1].param_index
       : toIdx;
 
-    console.log(`[PARAM_CONFIG] Device: ${configSysId}, FROM=${fromIdx}, TO=${actualTo}, Count=${paraArray.length}`);
+    console.log(
+      `[PARAM_CONFIG] Device: ${configSysId}, FROM=${fromIdx}, TO=${actualTo}, Count=${paraArray.length}`
+    );
 
     return res.json({
       TYPE: 'PARA_CONFIG',
